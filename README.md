@@ -1,7 +1,3 @@
-Here’s a clear README.md you can drop alongside redirector.html:
-
-⸻
-
 Grocery Single-Tab Redirector
 
 This is a lightweight web app (redirector.html) that makes it easier to search groceries across Fry’s, Safeway, and Target using a single input box. It’s designed to work smoothly on iPad Safari (and other modern browsers) where opening multiple tabs is necessary.
