@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Grocery Single‑Tab Redirector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height: 100%; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <main class="max-w-2xl mx-auto p-4">
+    <header class="mb-4">
+      <h1 class="text-2xl font-bold">Grocery Single‑Tab Redirector</h1>
+      <p class="text-sm text-gray-600">Open 3 tabs once (Fry's, Safeway, Target). Every search just <em>updates</em> those same tabs. Works in Safari on iPad.</p>
+    </header>
+
+    <section class="bg-white rounded-2xl shadow p-4 mb-4">
+      <form id="form" class="grid grid-cols-1 gap-3">
+        <label class="grid gap-1">
+          <span class="text-sm font-medium">What do you need?</span>
+          <input id="q" type="text" placeholder="Butter, milk, eggs…" required class="rounded-xl border border-gray-300 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-600" />
+        </label>
+        <details>
+          <summary class="cursor-pointer font-semibold">Options</summary>
+          <div class="grid gap-2 mt-2">
+            <label class="grid gap-1">
+              <span class="text-sm">ZIP (optional)</span>
+              <input id="zip" type="text" inputmode="numeric" pattern="[0-9]{5}" placeholder="85226" class="rounded-xl border border-gray-300 px-4 py-2" />
+              <span class="text-xs text-gray-500">Retailer sites usually remember your chosen store via cookies.</span>
+            </label>
+            <fieldset class="grid md:grid-cols-3 gap-2 border border-gray-200 rounded-xl p-2">
+              <legend class="text-xs text-gray-500 px-1">Custom bases (optional)</legend>
+              <input id="uFrys" type="url" placeholder="https://www.frysfood.com/search" class="rounded-xl border border-gray-300 px-3 py-2"/>
+              <input id="uSafeway" type="url" placeholder="https://www.safeway.com/shop/search-results.html" class="rounded-xl border border-gray-300 px-3 py-2"/>
+              <input id="uTarget" type="url" placeholder="https://www.target.com/s" class="rounded-xl border border-gray-300 px-3 py-2"/>
+            </fieldset>
+          </div>
+        </details>
+
+        <div class="flex gap-2">
+          <button id="start" type="button" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 font-semibold">Start session (open/attach 3 tabs)</button>
+          <button id="searchBtn" type="submit" class="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 font-semibold">Search</button>
+        </div>
+        <p class="text-xs text-gray-500">Tip: On iPad, tap <strong>Start session</strong> once to open the three tabs. After that, just type a new item and hit <strong>Search</strong>. Only those same tabs will change.</p>
+      </form>
+    </section>
+
+    <section class="bg-white rounded-2xl shadow p-4">
+      <h2 class="font-semibold mb-2">Status</h2>
+      <ul id="status" class="text-sm text-gray-700 list-disc pl-5 space-y-1">
+        <li>Not started</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    // ---- URL builders ----
+    function buildFrysURL(q) { const u = new URL(window._bases.frys); u.searchParams.set('query', q); return u.toString(); }
+    function buildSafewayURL(q) { const u = new URL(window._bases.safeway); u.searchParams.set('q', q); return u.toString(); }
+    function buildTargetURL(q) { const u = new URL(window._bases.target); u.searchParams.set('searchTerm', q); return u.toString(); }
+
+    // Defaults
+    window._bases = {
+      frys: 'https://www.frysfood.com/search',
+      safeway: 'https://www.safeway.com/shop/search-results.html',
+      target: 'https://www.target.com/s'
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const q = $('q');
+    const zip = $('zip');
+    const uFrys = $('uFrys');
+    const uSafeway = $('uSafeway');
+    const uTarget = $('uTarget');
+    const status = $('status');
+
+    // References to the 3 tabs we open once per session
+    let refFrys = null, refSafeway = null, refTarget = null;
+
+    // Persist simple options in localStorage
+    function savePrefs() {
+      localStorage.setItem('prefs', JSON.stringify({
+        q: q.value, zip: zip.value,
+        uFrys: uFrys.value, uSafeway: uSafeway.value, uTarget: uTarget.value
+      }));
+    }
+    function loadPrefs() {
+      try {
+        const p = JSON.parse(localStorage.getItem('prefs')||'{}');
+        if (p.q) q.value = p.q; if (p.zip) zip.value = p.zip;
+        if (p.uFrys) uFrys.value = p.uFrys;
+        if (p.uSafeway) uSafeway.value = p.uSafeway;
+        if (p.uTarget) uTarget.value = p.uTarget;
+        applyBases();
+      } catch {}
+    }
+    function applyBases() {
+      window._bases.frys = uFrys.value || 'https://www.frysfood.com/search';
+      window._bases.safeway = uSafeway.value || 'https://www.safeway.com/shop/search-results.html';
+      window._bases.target = uTarget.value || 'https://www.target.com/s';
+    }
+
+    function setStatus(lines) {
+      status.innerHTML = lines.map(t => `<li>${t}</li>`).join('');
+    }
+
+    function openOrAttachTabs() {
+      applyBases();
+      const term = q.value.trim() || '';
+      // Open 3 tabs via user gesture (required on iPad)
+      // If refs already exist and not closed, just focus them; if closed or null, open anew.
+      const urls = {
+        frys: buildFrysURL(term || 'milk'),
+        safeway: buildSafewayURL(term || 'milk'),
+        target: buildTargetURL(term || 'milk')
+      };
+      if (!refFrys || refFrys.closed) refFrys = window.open(urls.frys, 'frys_tab');
+      if (!refSafeway || refSafeway.closed) refSafeway = window.open(urls.safeway, 'safeway_tab');
+      if (!refTarget || refTarget.closed) refTarget = window.open(urls.target, 'target_tab');
+      setStatus([
+        'Session ready: 3 tabs should be open.',
+        'Next: type an item and tap Search to update those tabs. '
+      ]);
+    }
+
+    function updateExistingTabs(term) {
+      const lines = [];
+      const f = buildFrysURL(term);
+      const s = buildSafewayURL(term);
+      const t = buildTargetURL(term);
+      // If the tab was opened by this page and we still hold the reference, we can update its location cross-origin.
+      try { if (refFrys && !refFrys.closed) { refFrys.location.href = f; lines.push('Updated Fry\'s'); } else { lines.push('Fry\'s tab missing — tap Start session'); } } catch { lines.push('Fry\'s: unable to update — reopen'); }
+      try { if (refSafeway && !refSafeway.closed) { refSafeway.location.href = s; lines.push('Updated Safeway'); } else { lines.push('Safeway tab missing — tap Start session'); } } catch { lines.push('Safeway: unable to update — reopen'); }
+      try { if (refTarget && !refTarget.closed) { refTarget.location.href = t; lines.push('Updated Target'); } else { lines.push('Target tab missing — tap Start session'); } } catch { lines.push('Target: unable to update — reopen'); }
+      setStatus(lines);
+    }
+
+    // Event wiring
+    $('start').addEventListener('click', () => { savePrefs(); openOrAttachTabs(); });
+
+    $('form').addEventListener('submit', (e) => {
+      e.preventDefault(); savePrefs();
+      const term = q.value.trim(); if (!term) return;
+      updateExistingTabs(term);
+    });
+
+    document.addEventListener('input', savePrefs);
+    window.addEventListener('load', loadPrefs);
+  </script>
+</body>
+</html>
